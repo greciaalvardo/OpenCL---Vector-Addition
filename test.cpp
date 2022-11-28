@@ -33,12 +33,13 @@ int main(void) {
     source_size = fread(source_str, 1, MAX_SOURCE_SIZE, fp);
     fclose(fp);
     printf("kernel loading done\n");
+
     // Get platform and device information
     cl_device_id device_id = NULL;
     cl_uint ret_num_devices;
     cl_uint ret_num_platforms;
 
-
+    // platform = installed implementation sdk
     cl_int ret = clGetPlatformIDs(0, NULL, &ret_num_platforms);
     cl_platform_id* platforms = NULL;
     platforms = (cl_platform_id*)malloc(ret_num_platforms * sizeof(cl_platform_id));
@@ -46,15 +47,28 @@ int main(void) {
     ret = clGetPlatformIDs(ret_num_platforms, platforms, NULL);
     printf("ret at %d is %d\n", __LINE__, ret);
 
-    ret = clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_ALL, 1,
+    ret = clGetDeviceIDs(platforms[0], CL_DEVICE_TYPE_GPU, 1,
         &device_id, &ret_num_devices);
     printf("ret at %d is %d\n", __LINE__, ret);
-    // Create an OpenCL context
-    cl_context context = clCreateContext(NULL, 1, &device_id, NULL, NULL, &ret);
+
+
+    // Create an OpenCL context = the devices selected to work together ==> 1 device - GPU
+    cl_context context = clCreateContext(
+        NULL,
+        1,          // 1 device
+        &device_id,
+        NULL,
+        NULL,
+        &ret        // our gpu (device) ID
+    );
     printf("ret at %d is %d\n", __LINE__, ret);
 
-    // Create a command queue
-    cl_command_queue command_queue = clCreateCommandQueue(context, device_id, 0, &ret);
+    // Create a command queue to communitcate with device and send it commands
+    cl_command_queue command_queue = clCreateCommandQueue(
+        context, // our device(s)
+        device_id,
+        0,
+        &ret);
     printf("ret at %d is %d\n", __LINE__, ret);
 
     // Create memory buffers on the device for each vector 
@@ -103,12 +117,18 @@ int main(void) {
     //ret = clSetKernelArg(kernel, 3, sizeof(int), &LIST_SIZE);
 
     printf("before execution\n");
+
     // Execute the OpenCL kernel on the list
     size_t global_item_size = LIST_SIZE; // Process the entire lists
     size_t local_item_size = 64; // Divide work items into groups of 64
+
+    // Provided local-item size will be used to determine how to
+    // break up local work items depending on global size
     ret = clEnqueueNDRangeKernel(command_queue, kernel, 1, NULL,
         &global_item_size, &local_item_size, 0, NULL, NULL);
+
     printf("after execution\n");
+
     // Read the memory buffer C on the device to the local variable C
     int* C = (int*)malloc(sizeof(int) * LIST_SIZE);
     ret = clEnqueueReadBuffer(command_queue, c_mem_obj, CL_TRUE, 0,
@@ -118,8 +138,8 @@ int main(void) {
     for (i = 0; i < LIST_SIZE; i++)
         printf("%d + %d = %d\n", A[i], B[i], C[i]);
 
-    // Clean up
-    ret = clFlush(command_queue);
+    // Clean up - 
+    ret = clFlush(command_queue); // guarantees commands will eventually be submitted to device (gpu)
     ret = clFinish(command_queue);
     ret = clReleaseKernel(kernel);
     ret = clReleaseProgram(program);
